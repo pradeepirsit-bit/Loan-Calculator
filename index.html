@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Loan Amortization — Dashboard with Charts</title>
+  <title>Loan Amortization — Minimal Dashboard with Charts</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root{
       --bg:#f6f8fb; --card:#ffffff; --muted:#6b7280; --accent:#0f172a; --accent-2:#2563eb;
@@ -17,7 +16,7 @@
     h1{font-size:16px;margin:0 0 8px 0;font-weight:700;color:var(--accent)}
     .muted{color:var(--muted);font-size:13px}
     label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
-    input[type="number"], input[type="date"]{
+    input[type="number"], input[type="date"], select{
       width:100%;padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.06);background:transparent;color:var(--accent);font-size:14px;box-sizing:border-box;
     }
     .row{display:flex;gap:10px}
@@ -33,15 +32,23 @@
     .summary-item{padding:12px;border-radius:8px;background:linear-gradient(180deg,#fff,#fbfdff);border:1px solid rgba(15,23,42,0.03);text-align:center}
     .summary-label{font-size:12px;color:var(--muted)}
     .summary-value{font-weight:700;margin-top:6px}
-    .popup { position: absolute; left: 18px; top: 420px; width:360px; background:var(--card); border-radius:10px; padding:12px; box-shadow:0 10px 30px rgba(16,24,40,0.08); border:1px solid rgba(15,23,42,0.04); display:none; z-index:40 }
+    .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+    .chart-card{padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.04);background:var(--glass)}
+    canvas{width:100% !important;height:260px !important}
+    .popup { position: absolute; left: 18px; top: 520px; width:360px; background:var(--card); border-radius:10px; padding:12px; box-shadow:0 10px 30px rgba(16,24,40,0.08); border:1px solid rgba(15,23,42,0.04); display:none; z-index:40 }
     .popup.visible { display:block; }
     .prepay-list{max-height:160px;overflow:auto;margin-top:8px;border-radius:8px;padding:8px;background:transparent;border:1px dashed rgba(15,23,42,0.04)}
     .prepay-item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;background:rgba(15,23,42,0.02);margin-bottom:6px}
     .prepay-item .meta{color:var(--muted);font-size:13px}
     .del{background:transparent;border:none;color:var(--danger);cursor:pointer;font-weight:700}
-    canvas{max-height:300px !important}
-    @media (max-width:980px){.wrap{grid-template-columns:1fr}.popup{position:static;width:100%}}
+    @media (max-width:980px){
+      .wrap{grid-template-columns:1fr}
+      .charts{grid-template-columns:1fr}
+      canvas{height:220px !important}
+      .popup{position:static;width:100%}
+    }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -106,10 +113,10 @@
         <button id="reset" class="btn ghost small">Reset</button>
       </div>
 
-      <!-- One-off popup -->
       <div id="oneOffPopup" class="popup" aria-hidden="true">
         <h3 style="margin:0 0 8px 0;font-size:14px;color:var(--accent)">One‑off Prepayments</h3>
         <div class="muted" style="font-size:13px">Add specific one-off prepayments (applied on the chosen EMI month).</div>
+
         <div class="row" style="margin-top:10px">
           <div style="flex:1">
             <label>Amount (₹)</label>
@@ -117,4 +124,417 @@
           </div>
           <div style="width:160px">
             <label>Date</label>
-            <input id
+            <input id="popupDate" type="date" />
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button id="addPrepay" class="btn small">Add</button>
+          <button id="clearPrepays" class="btn small" style="background:transparent;border:1px solid rgba(15,23,42,0.06);color:var(--accent)">Clear</button>
+        </div>
+
+        <div class="prepay-list" id="prepayList" aria-live="polite" style="margin-top:10px">
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Summary + Charts -->
+    <div class="card">
+      <h1>Summary</h1>
+      <div class="muted" style="margin-bottom:12px">Results from the last calculation. Charts are compact to keep the layout balanced.</div>
+
+      <div class="summary-grid" id="summary" style="display:none">
+        <div class="summary-item">
+          <div class="summary-label">Monthly EMI</div>
+          <div id="monthlyPayment" class="summary-value">—</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Interest (No Prepay)</div>
+          <div id="interestNoPrepay" class="summary-value">—</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Interest (With Prepay)</div>
+          <div id="interestWithPrepay" class="summary-value">—</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Interest Saved</div>
+          <div id="interestSaved" class="summary-value">—</div>
+        </div>
+      </div>
+
+      <div class="charts">
+        <div class="chart-card">
+          <div class="muted" style="font-size:13px;margin-bottom:8px">Outstanding Balance Over Time</div>
+          <canvas id="balanceChart"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="muted" style="font-size:13px;margin-bottom:8px">Cumulative Interest Paid</div>
+          <canvas id="interestChart"></canvas>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;display:flex;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px;padding:12px;border-radius:10px;border:1px dashed rgba(15,23,42,0.04);background:transparent">
+          <div class="muted">Principal</div>
+          <div id="phPrincipal" style="font-weight:700;margin-top:8px">—</div>
+        </div>
+        <div style="flex:1;min-width:220px;padding:12px;border-radius:10px;border:1px dashed rgba(15,23,42,0.04);background:transparent">
+          <div class="muted">Payoff Date (With Prepay)</div>
+          <div id="phPayoff" style="font-weight:700;margin-top:8px">—</div>
+        </div>
+        <div style="flex:1;min-width:220px;padding:12px;border-radius:10px;border:1px dashed rgba(15,23,42,0.04);background:transparent">
+          <div class="muted">Time Saved</div>
+          <div id="timeSaved" style="font-weight:700;margin-top:8px">—</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;padding:12px;border-radius:8px;border:1px dashed rgba(15,23,42,0.04);background:transparent">
+        <div class="muted">Notes</div>
+        <div id="phNotes" style="margin-top:8px;color:var(--muted)">Use Calculate to compute results. One‑off prepayments via One‑off button. Reset clears everything.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Formatting helpers
+    const fmtRupee = (v) => {
+      if (v === null || isNaN(v)) return '—';
+      return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
+    };
+
+    // Date helpers
+    function addMonths(date, months) {
+      const d = new Date(date.getTime());
+      const day = d.getDate();
+      d.setMonth(d.getMonth() + months);
+      if (d.getDate() < day) d.setDate(0);
+      return d;
+    }
+    function monthsBetween(a, b) {
+      return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    }
+    function formatDateShort(date) {
+      return new Intl.DateTimeFormat('en-IN', { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
+    }
+
+    // Finance helpers
+    function monthlyPayment(principal, monthlyRate, months) {
+      if (monthlyRate === 0) return principal / months;
+      const r = monthlyRate;
+      return principal * (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
+    }
+
+    // Generate schedule with combined frequency prepayments and return full arrays for charting
+    function generateSchedule({
+      principal, apr, years,
+      emiStartDate, prepayStartDate,
+      pMonthly, pQuarterly, pHalfYearly, pYearly,
+      oneOffMap
+    }) {
+      const monthsTerm = Math.round(years * 12);
+      const monthlyRate = apr / 100 / 12;
+      const basePayment = monthlyPayment(principal, monthlyRate, monthsTerm);
+
+      let prepayStartMonth = 1;
+      if (prepayStartDate && emiStartDate) {
+        const diff = monthsBetween(emiStartDate, prepayStartDate);
+        prepayStartMonth = Math.max(1, diff + 1);
+      }
+
+      function isMonthly(m) { return m >= prepayStartMonth; }
+      function isQuarterly(m) { return m >= prepayStartMonth && (m % 3 === 0); }
+      function isHalfYearly(m) { return m >= prepayStartMonth && (m % 6 === 0); }
+      function isYearly(m) { return m >= prepayStartMonth && (m % 12 === 0); }
+
+      // Baseline (no prepayment)
+      let balance = principal;
+      const baseline = [];
+      for (let m = 1; m <= 10000 && balance > 0.0001; m++) {
+        const interest = balance * monthlyRate;
+        let principalPaid = basePayment - interest;
+        if (principalPaid > balance) principalPaid = balance;
+        balance -= principalPaid;
+        baseline.push({month: m, date: addMonths(emiStartDate, m - 1), payment: principalPaid + interest, interest, principal: principalPaid, prepay: 0, balance: Math.max(0, balance)});
+        if (m > monthsTerm + 1200) break;
+      }
+
+      // Scenario with scheduled + one-off prepayments
+      balance = principal;
+      const scenario = [];
+      for (let m = 1; m <= 10000 && balance > 0.0001; m++) {
+        const interest = balance * monthlyRate;
+        let principalPaid = basePayment - interest;
+        if (principalPaid < 0) principalPaid = 0;
+        if (principalPaid > balance) principalPaid = balance;
+        balance -= principalPaid;
+
+        let prepay = 0;
+        if (oneOffMap && oneOffMap.has(m)) prepay += Math.min(balance, oneOffMap.get(m));
+        if (isMonthly(m) && pMonthly > 0) prepay += Math.min(Math.max(0, balance - prepay), pMonthly);
+        if (isQuarterly(m) && pQuarterly > 0) prepay += Math.min(Math.max(0, balance - prepay), pQuarterly);
+        if (isHalfYearly(m) && pHalfYearly > 0) prepay += Math.min(Math.max(0, balance - prepay), pHalfYearly);
+        if (isYearly(m) && pYearly > 0) prepay += Math.min(Math.max(0, balance - prepay), pYearly);
+
+        if (prepay > 0) balance -= prepay;
+        scenario.push({month: m, date: addMonths(emiStartDate, m - 1), payment: principalPaid + interest, interest, principal: principalPaid, prepay, balance: Math.max(0, balance)});
+        if (m > monthsTerm + 1200) break;
+      }
+
+      const baselineTotalInterest = baseline.reduce((s, r) => s + r.interest, 0);
+      const scenarioTotalInterest = scenario.reduce((s, r) => s + r.interest, 0);
+      const interestSaved = baselineTotalInterest - scenarioTotalInterest;
+      const payoffMonthsBaseline = baseline.length;
+      const payoffMonthsScenario = scenario.length;
+      const payoffDateScenario = scenario.length ? scenario[scenario.length - 1].date : null;
+
+      return {
+        basePayment,
+        baseline,
+        scenario,
+        baselineTotalInterest,
+        scenarioTotalInterest,
+        interestSaved,
+        payoffMonthsBaseline,
+        payoffMonthsScenario,
+        payoffDateScenario
+      };
+    }
+
+    // Chart instances
+    let balanceChart = null;
+    let interestChart = null;
+
+    function updateCharts(result) {
+      const labels = result.scenario.map(r => formatDateShort(r.date));
+      const balancesScenario = result.scenario.map(r => r.balance);
+      const balancesBaseline = result.baseline.slice(0, result.scenario.length).map(r => r.balance);
+
+      // Balance chart (baseline vs scenario)
+      const ctxB = document.getElementById('balanceChart').getContext('2d');
+      if (balanceChart) balanceChart.destroy();
+      balanceChart = new Chart(ctxB, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'No prepayment', data: balancesBaseline, borderColor: '#94a3b8', backgroundColor: 'rgba(148,163,184,0.06)', tension: 0.25 },
+            { label: 'With prepayment', data: balancesScenario, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.06)', tension: 0.25 }
+          ]
+        },
+        options: {
+          plugins: { legend: { labels: { color: '#374151' } } },
+          scales: {
+            x: { ticks: { color: '#6b7280' } },
+            y: { ticks: { color: '#6b7280', callback: val => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val) } }
+          },
+          interaction: { mode: 'index', intersect: false },
+          maintainAspectRatio: false
+        }
+      });
+
+      // Cumulative interest chart
+      const cumBaseline = result.baseline.map((r, i) => result.baseline.slice(0, i + 1).reduce((s, x) => s + x.interest, 0));
+      const cumScenario = result.scenario.map((r, i) => result.scenario.slice(0, i + 1).reduce((s, x) => s + x.interest, 0));
+      const ctxI = document.getElementById('interestChart').getContext('2d');
+      if (interestChart) interestChart.destroy();
+      interestChart = new Chart(ctxI, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Cumulative interest (no prepay)', data: cumBaseline.slice(0, labels.length), borderColor: '#94a3b8', backgroundColor: 'rgba(148,163,184,0.06)', tension: 0.25 },
+            { label: 'Cumulative interest (with prepay)', data: cumScenario, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.06)', tension: 0.25 }
+          ]
+        },
+        options: {
+          plugins: { legend: { labels: { color: '#374151' } } },
+          scales: {
+            x: { ticks: { color: '#6b7280' } },
+            y: { ticks: { color: '#6b7280', callback: val => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val) } }
+          },
+          interaction: { mode: 'index', intersect: false },
+          maintainAspectRatio: false
+        }
+      });
+    }
+
+    // UI wiring
+    const startInput = document.getElementById('startDate');
+    const prepayStartInput = document.getElementById('prepayStartDate');
+    const today = new Date();
+    const isoToday = today.toISOString().slice(0,10);
+    startInput.value = isoToday;
+    prepayStartInput.value = isoToday;
+
+    // One-off popup elements & state
+    const oneOffBtn = document.getElementById('oneOffBtn');
+    const oneOffPopup = document.getElementById('oneOffPopup');
+    const popupAmount = document.getElementById('popupAmount');
+    const popupDate = document.getElementById('popupDate');
+    const addPrepayBtn = document.getElementById('addPrepay');
+    const clearPrepaysBtn = document.getElementById('clearPrepays');
+    const prepayList = document.getElementById('prepayList');
+
+    // Map of monthIndex -> amount for one-off prepayments
+    let oneOffMap = new Map();
+
+    // Toggle popup
+    oneOffBtn.addEventListener('click', () => {
+      const visible = oneOffPopup.classList.toggle('visible');
+      oneOffPopup.setAttribute('aria-hidden', !visible);
+      if (!popupDate.value) popupDate.value = prepayStartInput.value || isoToday;
+    });
+
+    // Add one-off prepayment from popup
+    addPrepayBtn.addEventListener('click', () => {
+      const amt = Math.max(0, Math.round(Number(popupAmount.value) || 0));
+      const dateVal = popupDate.value;
+      if (!dateVal || amt <= 0) {
+        alert('Please enter a valid amount and date.');
+        return;
+      }
+      const emiStartVal = startInput.value || isoToday;
+      const emiStartDate = new Date(emiStartVal + 'T00:00:00');
+      const targetDate = new Date(dateVal + 'T00:00:00');
+      const monthIndex = monthsBetween(emiStartDate, targetDate) + 1;
+      if (monthIndex < 1) {
+        alert('Prepayment date must be on or after EMI start date.');
+        return;
+      }
+      const prev = oneOffMap.get(monthIndex) || 0;
+      oneOffMap.set(monthIndex, prev + amt);
+      renderPrepayList();
+      popupAmount.value = 0;
+    });
+
+    clearPrepaysBtn.addEventListener('click', () => {
+      oneOffMap.clear();
+      renderPrepayList();
+    });
+
+    function renderPrepayList() {
+      prepayList.innerHTML = '';
+      if (oneOffMap.size === 0) {
+        prepayList.innerHTML = '<div class="muted">No one‑off prepayments added.</div>';
+        return;
+      }
+      const entries = Array.from(oneOffMap.entries()).sort((a,b)=>a[0]-b[0]);
+      for (const [monthIndex, amt] of entries) {
+        const item = document.createElement('div');
+        item.className = 'prepay-item';
+        const emiStartVal = startInput.value || isoToday;
+        const emiStartDate = new Date(emiStartVal + 'T00:00:00');
+        const date = addMonths(emiStartDate, monthIndex - 1);
+        item.innerHTML = `<div>
+            <div style="font-weight:700">${fmtRupee(amt)}</div>
+            <div class="meta">${formatDateShort(date)} • Month ${monthIndex}</div>
+          </div>
+          <div>
+            <button class="del" data-month="${monthIndex}">✕</button>
+          </div>`;
+        prepayList.appendChild(item);
+      }
+      prepayList.querySelectorAll('.del').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const m = Number(btn.getAttribute('data-month'));
+          oneOffMap.delete(m);
+          renderPrepayList();
+        });
+      });
+    }
+
+    // Read inputs helper
+    function readInputs() {
+      const principal = parseFloat(document.getElementById('principal').value) || 0;
+      const apr = parseFloat(document.getElementById('apr').value) || 0;
+      const years = parseFloat(document.getElementById('years').value) || 0;
+      const pMonthly = parseFloat(document.getElementById('pMonthly').value) || 0;
+      const pQuarterly = parseFloat(document.getElementById('pQuarterly').value) || 0;
+      const pHalfYearly = parseFloat(document.getElementById('pHalfYearly').value) || 0;
+      const pYearly = parseFloat(document.getElementById('pYearly').value) || 0;
+      const emiStartVal = document.getElementById('startDate').value;
+      const prepayStartVal = document.getElementById('prepayStartDate').value;
+      const emiStartDate = emiStartVal ? new Date(emiStartVal + 'T00:00:00') : new Date();
+      const prepayStartDate = prepayStartVal ? new Date(prepayStartVal + 'T00:00:00') : emiStartDate;
+      return {principal, apr, years, pMonthly, pQuarterly, pHalfYearly, pYearly, emiStartDate, prepayStartDate};
+    }
+
+    // Calculate wiring
+    document.getElementById('calc').addEventListener('click', () => runCalculation());
+
+    document.getElementById('reset').addEventListener('click', () => {
+      document.getElementById('principal').value = 500000;
+      document.getElementById('apr').value = 8.5;
+      document.getElementById('years').value = 20;
+      document.getElementById('pMonthly').value = 2000;
+      document.getElementById('pQuarterly').value = 0;
+      document.getElementById('pHalfYearly').value = 0;
+      document.getElementById('pYearly').value = 0;
+      document.getElementById('startDate').value = isoToday;
+      document.getElementById('prepayStartDate').value = isoToday;
+      oneOffMap.clear();
+      renderPrepayList();
+      document.getElementById('summary').style.display = 'none';
+      document.getElementById('monthlyPayment').textContent = '—';
+      document.getElementById('interestNoPrepay').textContent = '—';
+      document.getElementById('interestWithPrepay').textContent = '—';
+      document.getElementById('interestSaved').textContent = '—';
+      document.getElementById('timeSaved').textContent = '—';
+      document.getElementById('phPrincipal').textContent = '—';
+      document.getElementById('phPayoff').textContent = '—';
+      document.getElementById('phNotes').textContent = 'Use Calculate to compute results. One‑off prepayments via One‑off button. Reset clears everything.';
+      if (balanceChart) { balanceChart.destroy(); balanceChart = null; }
+      if (interestChart) { interestChart.destroy(); interestChart = null; }
+      oneOffPopup.classList.remove('visible');
+      oneOffPopup.setAttribute('aria-hidden', 'true');
+    });
+
+    function runCalculation() {
+      const inputs = readInputs();
+      const result = generateSchedule({
+        principal: inputs.principal,
+        apr: inputs.apr,
+        years: inputs.years,
+        emiStartDate: inputs.emiStartDate,
+        prepayStartDate: inputs.prepayStartDate,
+        pMonthly: inputs.pMonthly,
+        pQuarterly: inputs.pQuarterly,
+        pHalfYearly: inputs.pHalfYearly,
+        pYearly: inputs.pYearly,
+        oneOffMap
+      });
+
+      // Update summary
+      document.getElementById('monthlyPayment').textContent = fmtRupee(result.basePayment);
+      document.getElementById('interestNoPrepay').textContent = fmtRupee(result.baselineTotalInterest);
+      document.getElementById('interestWithPrepay').textContent = fmtRupee(result.scenarioTotalInterest);
+      document.getElementById('interestSaved').textContent = fmtRupee(result.interestSaved);
+
+      // Time saved
+      const baselineMonths = result.payoffMonthsBaseline || 0;
+      const scenarioMonths = result.payoffMonthsScenario || 0;
+      const monthsSaved = Math.max(0, baselineMonths - scenarioMonths);
+      const yearsSaved = Math.floor(monthsSaved / 12);
+      const remMonths = monthsSaved % 12;
+      const timeSavedText = monthsSaved === 0 ? '0m' : `${yearsSaved}y ${remMonths}m (${monthsSaved} months)`;
+      document.getElementById('timeSaved').textContent = timeSavedText;
+
+      document.getElementById('summary').style.display = 'grid';
+      document.getElementById('phPrincipal').textContent = fmtRupee(inputs.principal);
+      document.getElementById('phPayoff').textContent = result.payoffDateScenario ? formatDateShort(result.payoffDateScenario) : '—';
+      document.getElementById('phNotes').textContent = 'Calculation completed. Charts show balance and cumulative interest.';
+
+      // Update charts
+      updateCharts(result);
+
+      // close popup for clarity
+      oneOffPopup.classList.remove('visible');
+      oneOffPopup.setAttribute('aria-hidden', 'true');
+    }
+
+    // Initial render
+    renderPrepayList();
+    runCalculation();
+  </script>
+</body>
+</html>
