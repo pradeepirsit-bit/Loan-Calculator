@@ -1,3 +1,4 @@
+```html
 <!doctype html>
 <html lang="en">
 <head>
@@ -35,9 +36,33 @@
     .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
     .chart-card{padding:10px;border-radius:8px;border:1px solid rgba(15,23,42,0.04);background:var(--glass)}
     canvas{width:100% !important;height:260px !important}
-    .popup { position: absolute; left: 18px; top: 520px; width:360px; background:var(--card); border-radius:10px; padding:12px; box-shadow:0 10px 30px rgba(16,24,40,0.08); border:1px solid rgba(15,23,42,0.04); display:none; z-index:40 }
-    .popup.visible { display:block; }
-    .prepay-list{max-height:160px;overflow:auto;margin-top:8px;border-radius:8px;padding:8px;background:transparent;border:1px dashed rgba(15,23,42,0.04)}
+    /* Modal popup overlay + centered modal */
+    .modal-overlay {
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(2,6,23,0.45);
+      z-index:90;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+    }
+    .modal-overlay.visible { display:flex; }
+    .popup {
+      width:360px;
+      max-height:80vh;
+      overflow:auto;
+      background:var(--card);
+      border-radius:10px;
+      padding:14px;
+      box-shadow:0 10px 30px rgba(16,24,40,0.12);
+      border:1px solid rgba(15,23,42,0.04);
+      z-index:100;
+    }
+    .popup .close {
+      background:transparent;border:none;font-weight:700;color:var(--muted);cursor:pointer;float:right;font-size:16px;padding:4px 6px;border-radius:6px;
+    }
+    .prepay-list{max-height:220px;overflow:auto;margin-top:8px;border-radius:8px;padding:8px;background:transparent;border:1px dashed rgba(15,23,42,0.04)}
     .prepay-item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;background:rgba(15,23,42,0.02);margin-bottom:6px}
     .prepay-item .meta{color:var(--muted);font-size:13px}
     .del{background:transparent;border:none;color:var(--danger);cursor:pointer;font-weight:700}
@@ -45,11 +70,8 @@
       .wrap{grid-template-columns:1fr}
       .charts{grid-template-columns:1fr}
       canvas{height:220px !important}
-      .popup{position:static;width:100%}
     }
   </style>
-
-  <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -110,33 +132,11 @@
       </div>
 
       <div class="controls" style="margin-top:14px">
-        <button id="calc" class="btn small">Calculate</button>
+        <!-- Separate Calculate button (only runs calculation) -->
+        <button id="calcBtn" class="btn small">Calculate</button>
+        <!-- One-off opens modal; adding prepayments does not auto-calc -->
         <button id="oneOffBtn" class="btn small" style="background:#111827">One‑off Prepayments</button>
         <button id="reset" class="btn ghost small">Reset</button>
-      </div>
-
-      <div id="oneOffPopup" class="popup" aria-hidden="true">
-        <h3 style="margin:0 0 8px 0;font-size:14px;color:var(--accent)">One‑off Prepayments</h3>
-        <div class="muted" style="font-size:13px">Add specific one-off prepayments (applied on the chosen EMI month).</div>
-
-        <div class="row" style="margin-top:10px">
-          <div style="flex:1">
-            <label>Amount (₹)</label>
-            <input id="popupAmount" type="number" min="0" step="1" value="5000" />
-          </div>
-          <div style="width:160px">
-            <label>Date</label>
-            <input id="popupDate" type="date" />
-          </div>
-        </div>
-
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button id="addPrepay" class="btn small">Add</button>
-          <button id="clearPrepays" class="btn small" style="background:transparent;border:1px solid rgba(15,23,42,0.06);color:var(--accent)">Clear</button>
-        </div>
-
-        <div class="prepay-list" id="prepayList" aria-live="polite" style="margin-top:10px">
-        </div>
       </div>
     </div>
 
@@ -192,13 +192,40 @@
 
       <div style="margin-top:16px;padding:12px;border-radius:8px;border:1px dashed rgba(15,23,42,0.04);background:transparent">
         <div class="muted">Notes</div>
-        <div id="phNotes" style="margin-top:8px;color:var(--muted)">Use Calculate to compute results. One‑off prepayments via One‑off button. Reset clears everything.</div>
+        <div id="phNotes" style="margin-top:8px;color:var(--muted)">Use Calculate to compute results. One‑off prepayments via the popup. Reset clears everything.</div>
       </div>
     </div>
   </div>
 
+  <!-- Modal overlay + popup for one-off prepayments -->
+  <div id="modalOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="popup" role="dialog" aria-modal="true" aria-labelledby="popupTitle">
+      <button class="close" id="closePopup" title="Close">✕</button>
+      <h3 id="popupTitle" style="margin:0 0 8px 0;font-size:14px;color:var(--accent)">One‑off Prepayments</h3>
+      <div class="muted" style="font-size:13px">Add specific one-off prepayments (applied on the chosen EMI month). Adding does not automatically recalculate — press Calculate when ready.</div>
+
+      <div class="row" style="margin-top:10px">
+        <div style="flex:1">
+          <label>Amount (₹)</label>
+          <input id="popupAmount" type="number" min="0" step="1" value="5000" />
+        </div>
+        <div style="width:160px">
+          <label>Date</label>
+          <input id="popupDate" type="date" />
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="addPrepay" class="btn small">Add</button>
+        <button id="clearPrepays" class="btn small" style="background:transparent;border:1px solid rgba(15,23,42,0.06);color:var(--accent)">Clear</button>
+        <button id="closePopupBtn" class="btn ghost small" style="margin-left:auto">Close</button>
+      </div>
+
+      <div class="prepay-list" id="prepayList" aria-live="polite" style="margin-top:10px"></div>
+    </div>
+  </div>
+
   <script>
-    // Wrap initialization so DOM is ready before first calculation
     document.addEventListener('DOMContentLoaded', () => {
       // Formatting helpers
       const fmtRupee = (v) => {
@@ -228,7 +255,7 @@
         return principal * (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
       }
 
-      // Generate schedule (same as before)
+      // Generate schedule
       function generateSchedule({
         principal, apr, years,
         emiStartDate, prepayStartDate,
@@ -362,7 +389,6 @@
             }
           });
         } catch (err) {
-          // If charts fail, ensure summary still shows
           console.error('Chart update error', err);
         }
       }
@@ -376,7 +402,9 @@
       prepayStartInput.value = isoToday;
 
       const oneOffBtn = document.getElementById('oneOffBtn');
-      const oneOffPopup = document.getElementById('oneOffPopup');
+      const modalOverlay = document.getElementById('modalOverlay');
+      const closePopup = document.getElementById('closePopup');
+      const closePopupBtn = document.getElementById('closePopupBtn');
       const popupAmount = document.getElementById('popupAmount');
       const popupDate = document.getElementById('popupDate');
       const addPrepayBtn = document.getElementById('addPrepay');
@@ -385,10 +413,21 @@
 
       let oneOffMap = new Map();
 
-      oneOffBtn.addEventListener('click', () => {
-        const visible = oneOffPopup.classList.toggle('visible');
-        oneOffPopup.setAttribute('aria-hidden', !visible);
+      function openPopup() {
+        modalOverlay.classList.add('visible');
+        modalOverlay.setAttribute('aria-hidden', 'false');
         if (!popupDate.value) popupDate.value = prepayStartInput.value || isoToday;
+      }
+      function closePopupFn() {
+        modalOverlay.classList.remove('visible');
+        modalOverlay.setAttribute('aria-hidden', 'true');
+      }
+
+      oneOffBtn.addEventListener('click', openPopup);
+      closePopup.addEventListener('click', closePopupFn);
+      closePopupBtn.addEventListener('click', closePopupFn);
+      modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) closePopupFn();
       });
 
       addPrepayBtn.addEventListener('click', () => {
@@ -463,7 +502,8 @@
         return {principal, apr, years, pMonthly, pQuarterly, pHalfYearly, pYearly, emiStartDate, prepayStartDate};
       }
 
-      document.getElementById('calc').addEventListener('click', () => runCalculation());
+      // Calculate button wiring (separate, only runs calculation)
+      document.getElementById('calcBtn').addEventListener('click', () => runCalculation());
 
       document.getElementById('reset').addEventListener('click', () => {
         document.getElementById('principal').value = 500000;
@@ -485,11 +525,10 @@
         document.getElementById('timeSaved').textContent = '—';
         document.getElementById('phPrincipal').textContent = '—';
         document.getElementById('phPayoff').textContent = '—';
-        document.getElementById('phNotes').textContent = 'Use Calculate to compute results. One‑off prepayments via One‑off button. Reset clears everything.';
+        document.getElementById('phNotes').textContent = 'Use Calculate to compute results. One‑off prepayments via the popup. Reset clears everything.';
         if (balanceChart) { balanceChart.destroy(); balanceChart = null; }
         if (interestChart) { interestChart.destroy(); interestChart = null; }
-        oneOffPopup.classList.remove('visible');
-        oneOffPopup.setAttribute('aria-hidden', 'true');
+        closePopupFn();
       });
 
       function runCalculation() {
@@ -527,12 +566,11 @@
         document.getElementById('phPayoff').textContent = result.payoffDateScenario ? formatDateShort(result.payoffDateScenario) : '—';
         document.getElementById('phNotes').textContent = 'Calculation completed. Charts show balance and cumulative interest.';
 
-        // Update charts (defensive)
+        // Update charts
         updateCharts(result);
 
-        // close popup for clarity
-        oneOffPopup.classList.remove('visible');
-        oneOffPopup.setAttribute('aria-hidden', 'true');
+        // close popup for clarity (but do not clear prepayments)
+        closePopupFn();
       }
 
       // initial render
@@ -542,3 +580,4 @@
   </script>
 </body>
 </html>
+```
